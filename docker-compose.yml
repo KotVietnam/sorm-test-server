@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # 1. FTP Server (vsftpd)
+  ftp:
+    image: fauria/vsftpd
+    container_name: dlp_ftp
+    environment:
+      - FTP_USER=dlpuser
+      - FTP_PASS=dlpsecret
+      # Важно для доступа извне: диапазон пассивных портов
+      - PASV_MIN_PORT=21100
+      - PASV_MAX_PORT=21110
+    ports:
+      - "20:20"
+      - "21:21"
+      - "21100-21110:21100-21110"
+    restart: always
+
+  # 2. Mail Server (SMTP + Web Interface)
+  mailhog:
+    image: mailhog/mailhog
+    container_name: dlp_mail
+    ports:
+      - "1025:1025" # SMTP порт для приема писем
+      - "8025:8025" # Web UI (смотреть письма)
+    restart: always
+
+  # 3. VoIP / SIP Server (Asterisk)
+  # Используем легковесный образ
+  asterisk:
+    image: andrius/asterisk
+    container_name: dlp_sip
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "10000-10050:10000-10050/udp" # RTP порты для голоса
+    restart: always
+
+  # 4. Web Server (HTTP)
+  nginx:
+    image: nginx:alpine
+    container_name: dlp_web
+    ports:
+      - "80:80"
+    restart: always
+
+  # 5. Radius Server
+  radius:
+    image: freeradius/freeradius-server
+    container_name: dlp_radius
+    environment:
+      - RADIUS_CLIENTS_SECRET=testing123
+    ports:
+      - "1812:1812/udp"
+    restart: always
+
+  # 6. Telnet Server (Legacy)
+  telnet:
+    image: crazymax/telnetd
+    container_name: dlp_telnet
+    ports:
+      - "23:23"
+    environment:
+      - USER=user
+      - PASS=pass
