@@ -1,66 +1,73 @@
-version: '3.8'
-
 services:
-  # 1. FTP Server (vsftpd)
+  # 1. FTP (Оставляем как было)
   ftp:
     image: fauria/vsftpd
-    container_name: dlp_ftp
     environment:
       - FTP_USER=dlpuser
       - FTP_PASS=dlpsecret
-      # Важно для доступа извне: диапазон пассивных портов
-      - PASV_MIN_PORT=21100
-      - PASV_MAX_PORT=21110
     ports:
-      - "20:20"
       - "21:21"
+      - "20:20"
       - "21100-21110:21100-21110"
     restart: always
 
-  # 2. Mail Server (SMTP + Web Interface)
-  mailhog:
-    image: mailhog/mailhog
-    container_name: dlp_mail
+  # 2. EMAIL COMBO (SMTP + IMAP + POP3)
+  # GreenMail - идеален для тестов. Принимает любую пару логин/пароль.
+  email_server:
+    image: greenmail/standalone:latest
+    container_name: dlp_email
+    environment:
+      # Включаем все протоколы
+      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user:pass
     ports:
-      - "1025:1025" # SMTP порт для приема писем
-      - "8025:8025" # Web UI (смотреть письма)
+      - "25:3025"  # SMTP (Внутри 3025, снаружи 25)
+      - "143:3143" # IMAP (Внутри 3143, снаружи 143)
+      - "110:3110" # POP3 (Внутри 3110, снаружи 110)
     restart: always
 
-  # 3. VoIP / SIP Server (Asterisk)
-  # Используем легковесный образ
+  # 3. XMPP / JABBER (Prosody)
+  xmpp:
+    image: prosody/prosody
+    container_name: dlp_xmpp
+    environment:
+      - PROSODY_ADMINS=admin@example.com
+      - PROSODY_ENABLE_REGISTRATION=true # Разрешаем авто-регистрацию
+    ports:
+      - "5222:5222" # Клиентский порт
+    restart: always
+
+  # 4. NNTP (Эмуляция через Netcat)
+  # Реальный INN настраивать долго, а DLP смотрит на порт и заголовки.
+  # Мы просто слушаем порт 119 и шлем приветствие при подключении.
+  nntp_mock:
+    image: alpine
+    container_name: dlp_nntp
+    # Запускаем бесконечный цикл netcat: слушает 119 порт и отвечает кодом 200 (Привет)
+    command: /bin/sh -c "apk add --no-cache netcat-openbsd && while true; do echo '200 NNTP Service Ready' | nc -l -p 119; done"
+    ports:
+      - "119:119"
+    restart: always
+
+  # 5. VoIP / SIP (Asterisk)
   asterisk:
     image: andrius/asterisk
-    container_name: dlp_sip
     ports:
       - "5060:5060/udp"
       - "5060:5060/tcp"
-      - "10000-10050:10000-10050/udp" # RTP порты для голоса
+      - "10000-10050:10000-10050/udp"
     restart: always
 
-  # 4. Web Server (HTTP)
-  nginx:
-    image: nginx:alpine
-    container_name: dlp_web
-    ports:
-      - "80:80"
-    restart: always
-
-  # 5. Radius Server
+  # 6. Radius
   radius:
     image: freeradius/freeradius-server
-    container_name: dlp_radius
     environment:
       - RADIUS_CLIENTS_SECRET=testing123
     ports:
       - "1812:1812/udp"
     restart: always
 
-  # 6. Telnet Server (Legacy)
-  telnet:
-    image: crazymax/telnetd
-    container_name: dlp_telnet
+  # 7. Web
+  nginx:
+    image: nginx:alpine
     ports:
-      - "23:23"
-    environment:
-      - USER=user
-      - PASS=pass
+      - "80:80"
