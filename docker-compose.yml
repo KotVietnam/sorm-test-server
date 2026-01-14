@@ -1,11 +1,15 @@
+version: '3.8'
+
 services:
-  # 1. FTP Server (Файлы сохраняются в папку received_files на хосте)
+  # --- 1. FTP (NAT-Aware) ---
   ftp:
     image: fauria/vsftpd
     container_name: dlp_ftp
     environment:
       - FTP_USER=dlpuser
       - FTP_PASS=dlpsecret
+      # МАГИЯ: Сообщаем FTP, какой IP отдавать клиенту
+      - PASV_ADDRESS=${PUBLIC_IP} 
       - PASV_MIN_PORT=21100
       - PASV_MAX_PORT=21110
     volumes:
@@ -16,63 +20,69 @@ services:
       - "21100-21110:21100-21110"
     restart: always
 
-  # 2. Email Server (SMTP + IMAP + POP3)
-  email_server:
-    image: greenmail/standalone:latest
-    container_name: dlp_email
-    environment:
-      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=user:pass
-    ports:
-      - "25:3025"  # SMTP
-      - "143:3143" # IMAP
-      - "110:3110" # POP3
-    restart: always
-
-  # 3. VoIP / SIP (Asterisk)
+  # --- 2. SIP / Asterisk (NAT-Aware) ---
   asterisk:
     image: andrius/asterisk
     container_name: dlp_sip
     volumes:
       - ./extensions.conf:/etc/asterisk/extensions.conf
+      # Подсовываем конфиг SIP с настройками NAT
+      - ./sip.conf:/etc/asterisk/sip.conf 
       - sip_recordings:/var/spool/asterisk/monitor
     ports:
       - "5060:5060/udp"
       - "5060:5060/tcp"
-      - "10000-10050:10000-10050/udp"
+      # RTP порты (Голос)
+      - "10000-10050:10000-10050/udp" 
     healthcheck:
       disable: true
     restart: always
 
-  # 4. Web Server (Раздает записи разговоров)
+  # --- 3. Web Server ---
   nginx:
     image: nginx:alpine
     container_name: dlp_web
     volumes:
-      # Монтируем том с записями в папку Nginx
       - sip_recordings:/usr/share/nginx/html/recordings
     ports:
       - "80:80"
     restart: always
 
-  # 5. Radius
+  # --- 4. Email ---
+  email_server:
+    image: greenmail/standalone:latest
+    container_name: dlp_email
+    environment:
+      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled=true -Dgreenmail.users=user:pass
+    ports:
+      - "25:3025"
+      - "143:3143"
+      - "110:3110"
+    restart: always
+
+  # --- 5. Radius ---
   radius:
     image: freeradius/freeradius-server
-    container_name: dlp_radius
-    environment:
-      - RADIUS_CLIENTS_SECRET=testing123
-    ports:
-      - "1812:1812/udp"
-    restart: always
+    environment: ["RADIUS_CLIENTS_SECRET=testing123"]
+    ports: ["1812:1812/udp"]
 
-  # 6. Telnet (Busybox с открытой консолью)
+  # --- 6. Telnet ---
   telnet:
     image: busybox:latest
-    container_name: dlp_telnet
     command: telnetd -F -p 23 -l /bin/sh
+    ports: ["23:23"]
+# XMPP / Jabber сервер
+  xmpp:
+    image: prosody/prosody
+    container_name: dlp_xmpp
+    environment:
+      - PROSODY_ADMINS=admin@example.com
+      - PROSODY_ENABLE_REGISTRATION=true
+      # Разрешаем "голые" соединения без шифрования (важно для нашего простого скрипта)
+      - PROSODY_C2S_REQUIRE_ENCRYPTION=false 
     ports:
-      - "23:23"
+      - "5222:5222"
     restart: always
-
-# Общий том для передачи записей от Asterisk к Nginx
+    
 volumes:
   sip_recordings:
