@@ -1,0 +1,93 @@
+services:
+  ftp:
+    image: fauria/vsftpd:latest
+    environment:
+      FTP_USER: dlp
+      FTP_PASS: dlp
+      FTP_HOME: /home/vsftpd
+      PASV_ENABLE: "YES"
+      PORT_ENABLE: "YES"
+      PASV_ADDRESS: ${FTP_PASV_ADDRESS:-127.0.0.1}
+      PASV_MIN_PORT: 21000
+      PASV_MAX_PORT: 21010
+    ports:
+      - "20:20"
+      - "21:21"
+      - "21000-21010:21000-21010"
+    volumes:
+      - ./data/ftp:/home/vsftpd
+    restart: unless-stopped
+
+  telnet:
+    build:
+      context: ./docker/telnetd
+    ports:
+      - "23:23"
+    restart: unless-stopped
+
+  web:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/certs:/etc/nginx/certs:ro
+      - ./www:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  mail:
+    image: greenmail/standalone:latest
+    environment:
+      GREENMAIL_OPTS: "-Dgreenmail.setup.test.all -Dgreenmail.users=dlp:dlp@dlp.local"
+    ports:
+      - "25:3025"
+      - "110:3110"
+      - "143:3143"
+    restart: unless-stopped
+
+  irc:
+    image: inspircd/inspircd-docker:latest
+    ports:
+      - "6667:6667"
+    environment:
+      INSP_NET_NAME: DLP-Test-Lab
+      INSP_NET_SUFFIX: .dlp.local
+      INSP_ADMIN_EMAIL: admin@dlp.local
+      INSP_ENABLE_DNSBL: "no"
+    restart: unless-stopped
+
+  xmpp:
+    image: prosody/prosody:latest
+    ports:
+      - "5222:5222"
+      - "5269:5269"
+    volumes:
+      - ./config/prosody/prosody.cfg.lua:/etc/prosody/prosody.cfg.lua:ro
+    restart: unless-stopped
+
+  radius:
+    image: freeradius/freeradius-server:latest
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+    volumes:
+      - ./config/freeradius/clients.conf:/etc/freeradius/3.0/clients.conf:ro
+      - ./config/freeradius/authorize:/etc/freeradius/3.0/mods-config/files/authorize:ro
+    command: ["freeradius", "-f"]
+    restart: unless-stopped
+
+  asterisk:
+    build:
+      context: ./docker/asterisk
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "1720:1720/tcp"
+      - "4569:4569/udp"
+      - "2427:2427/udp"
+      - "2000:2000/tcp"
+      - "10000-10050:10000-10050/udp"
+    volumes:
+      - ./config/asterisk:/etc/asterisk:ro
+    restart: unless-stopped
