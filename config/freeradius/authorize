@@ -1,0 +1,2 @@
+dlpuser Cleartext-Password := "dlppass"
+    Reply-Message := "DLP-Test-Lab RADIUS OK"
