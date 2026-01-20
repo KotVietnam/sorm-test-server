@@ -1,106 +1,97 @@
-# SORM Server Test
+# Сервер для тестирования СОРМ
 
-Локальный серверный стенд для DLP/DPI‑тестов. Все сервисы поднимаются в Docker и доступны по стандартным портам.
+Этот проект представляет собой серверную часть для `sorm-test-client`. Он поднимает набор сервисов в Docker-контейнерах для приема и обработки трафика, генерируемого клиентом.
 
-## Быстрый старт
+## Системные требования
 
+*   **ОС:** Любая операционная система, поддерживающая Docker (рекомендуется Linux).
+*   **Docker и Docker Compose:** Установленные и работающие.
+*   **Публичный IP-адрес:** Сервер должен быть доступен извне по "белому" IP.
+
+## Установка
+
+### 1. Установка Docker
+
+Если у вас не установлен Docker, следуйте официальным инструкциям:
+*   [Установка Docker](https://docs.docker.com/engine/install/)
+*   [Установка Docker Compose](https://docs.docker.com/compose/install/)
+
+Для Windows или Mac можно использовать [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+### 2. Получение проекта
+
+Склонируйте этот репозиторий на свой сервер:
 ```bash
-docker compose up -d
+git clone <URL репозитория>
+cd sorm/sorm-test-server
 ```
 
-Проверить статус:
+## Настройка
 
+Настройка сервера производится через файл `.env`. Это критически важный шаг для корректной работы VoIP-сервисов.
+
+1.  В папке `sorm-test-server` создайте файл с именем `.env`.
+2.  Добавьте в него следующие строки:
+
+    ```env
+    # Имя проекта для Docker Compose (можно оставить по умолчанию)
+    COMPOSE_PROJECT_NAME=sorm
+
+    # Внешний IP-адрес сервера. Замените на ваш "белый" IP.
+    EXTERNAL_IP=XXX.XXX.XXX.XXX
+    ```
+
+3.  **Обязательно** замените `XXX.XXX.XXX.XXX` на реальный публичный IP-адрес вашего сервера. Этот IP-адрес будет использоваться Asterisk и другими сервисами для правильной маршрутизации медиатрафика (RTP).
+
+## Использование
+
+Все команды выполняются в директории `sorm-test-server`.
+
+### Запуск сервера
+
+Для запуска всех сервисов в фоновом режиме выполните:
 ```bash
-docker compose ps
+docker-compose up -d
 ```
 
-## Сервисы и порты
+### Проверка состояния
 
-- Web (nginx): `80/tcp`, `443/tcp`
-- Mail (GreenMail): `25/tcp` (SMTP), `110/tcp` (POP3), `143/tcp` (IMAP)
-- FTP (vsftpd): `20/tcp`, `21/tcp`, `21000-21010/tcp`
-- IRC (InspIRCd): `6667/tcp`
-- XMPP (Prosody): `5222/tcp`, `5269/tcp`
-- RADIUS (FreeRADIUS): `1812/udp`, `1813/udp`
-- Asterisk (VoIP):
-  - SIP `5060/udp`, `5060/tcp`
-  - H.323 `1720/tcp`
-  - IAX2 `4569/udp`
-  - MGCP `2427/udp`
-  - Skinny `2000/tcp`
-  - RTP `10000-10050/udp`
-- Telnet (busybox‑telnetd): `23/tcp`
-
-## Конфигурация
-
-- `docker-compose.yml` — описание всех сервисов.
-- `config/` — конфиги сервисов:
-  - `config/nginx/` — веб‑сервер и сертификаты.
-  - `config/asterisk/` — SIP/H.323/IAX2/MGCP/Skinny.
-  - `config/freeradius/` — клиенты и пользователи RADIUS.
-  - `config/prosody/` — XMPP.
-- `www/` — сайт и `rss.xml`.
-- `data/ftp/` — файловая область FTP.
-- `docker/` — Dockerfile'ы для telnetd и asterisk.
-
-## Конфигурация для работы с внешним IP-адресом
-
-Если клиент и сервер будут находиться на разных машинах с "белыми" IP, выполните следующие настройки:
-
-**1. Настройте FTP:**
-В файле `.env` укажите публичный IP вашего сервера. Это необходимо для корректной работы пассивного режима FTP.
-
-```.env
-FTP_PASV_ADDRESS=YOUR_PUBLIC_IP
-```
-
-**2. Настройте Asterisk (VoIP):**
-Asterisk должен знать свой внешний IP для правильной работы SIP и RTP.
-
-- Откройте файл `config/asterisk/pjsip.conf`.
-- Найдите секции `[transport-udp]` и `[transport-tcp]`.
-- Добавьте в **каждую** из этих секций следующие две строки, заменив `YOUR_PUBLIC_IP` на ваш реальный адрес:
-
-```ini
-external_media_address = YOUR_PUBLIC_IP
-external_signaling_address = YOUR_PUBLIC_IP
-```
-
-**Пример для `[transport-udp]`:**
-```ini
-[transport-udp]
-type=transport
-protocol=udp
-bind=0.0.0.0:5060
-external_media_address = 8.8.8.8
-external_signaling_address = 8.8.8.8
-```
-
-**3. Перезапустите сервер:**
-После внесения изменений полностью перезапустите Docker-контейнеры:
+Чтобы убедиться, что все контейнеры запустились и работают, используйте команду:
 ```bash
-docker compose down && docker compose up -d
+docker-compose ps
+```
+Вы должны увидеть список сервисов со статусом `Up` или `running`.
+
+### Просмотр логов
+
+Для просмотра логов всех сервисов в реальном времени:
+```bash
+docker-compose logs -f
+```
+Чтобы посмотреть логи конкретного сервиса (например, `asterisk`):
+```bash
+docker-compose logs -f asterisk
 ```
 
-**4. Настройте файрвол:**
-Убедитесь, что все порты, перечисленные в `docker-compose.yml`, открыты на файрволе вашего сервера.
+### Остановка сервера
 
-## Учетные данные по умолчанию
+Для остановки и удаления всех контейнеров, связанных с проектом:
+```bash
+docker-compose down
+```
 
+## Предоставляемые сервисы
 
-- Mail (GreenMail): `dlp / dlp`, домен `dlp.local`
-- FTP: `dlp / dlp`
-- RADIUS: `dlpuser / dlppass`, secret клиента `testing123`
-- SIP (Asterisk PJSIP): `1001 / pass1001`, `1002 / pass1002`
-- H.323 (ooh323): `h323user1 / h323pass1`, `h323user2 / h323pass2`
-- IAX2: `iaxuser1 / iaxpass1`, `iaxuser2 / iaxpass2`
-- MGCP endpoint: `gw1`
+`docker-compose` запускает следующие сервисы для эмуляции реальной сетевой инфраструктуры:
 
-## Особенности
-
-- FTP использует пассивный режим. Для доступа извне укажите корректный `FTP_PASV_ADDRESS` в `.env` и перезапустите `docker compose`.
-- HTTPS работает на самоподписанном сертификате.
-
-## Клиентский генератор трафика
-
-Скрипт генерации трафика находится в соседнем проекте `sorm-test-client`.
+| Сервис в `docker-compose.yml` | Программное обеспечение | Обрабатываемые протоколы |
+|-------------------------------|-------------------------|--------------------------|
+| `nginx`                       | Nginx                   | HTTP, HTTPS, WebMail (прокси) |
+| `asterisk`                    | Asterisk                | SIP, H.323, IAX2, MGCP, Skinny, RTP |
+| `prosody`                     | Prosody                 | XMPP (Jabber)            |
+| `ngircd`                      | ngIRCd                  | IRC                      |
+| `freeradius`                  | FreeRADIUS              | RADIUS                   |
+| `ftp`                         | vsftpd                  | FTP                      |
+| `postfix`                     | Postfix                 | SMTP                     |
+| `dovecot`                     | Dovecot                 | IMAP, POP3               |
+| `telnetd`                     | Telnetd                 | Telnet                   |
